@@ -39,16 +39,16 @@ public class Main {
             Process buildProcess = Runtime.getRuntime().exec(buildCommand);
             buildProcess.waitFor();  // Wait for the build to complete
 
-            // Mount the video-inputs directory from the host machine to the container
+            // Mount the videos directory from the host machine to the container
             String runCommand = String.format("docker run -d --name producer-service " +
                             "-e CONSUMER_HOST=%s " +
                             "-e CONSUMER_PORT=%d " +
                             "-e PRODUCER_THREADS=%d " +
                             "-e QUEUE_SIZE=%d " +
-                            "-v %s:/video-inputs " + // Mount the directory to the container
+                            "-v %s:/videos " + // Mount the directory to the container
                             "producer-service",
                     consumerIp, consumerPort, producerThreads, queueSize,
-                    "/producer/src/main/resources/video-inputs"  // Full path on the host machine to video folders
+                    "/videos"  // Full path on the host machine to video folders
             );
 
             // Run the producer container
@@ -73,29 +73,32 @@ public class Main {
         }
     }
 
-    private static void launchConsumerContainer(int consumerThreads, int queueSize, int consumerPort) {
-        try {
-            System.out.println("Building the consumer webapp Docker image...");
-            String buildCommand = "docker build -t consumer-webapp ./consumer-webapp";
-            Process buildProcess = Runtime.getRuntime().exec(buildCommand);
-            buildProcess.waitFor();
+   private static void launchConsumerContainer(int consumerThreads, int queueSize, int consumerPort) {
+    try {
+        System.out.println("Building the consumer Docker image...");
+        String buildCommand = "docker build -t consumer-server ./consumer-server";
+        Process buildProcess = Runtime.getRuntime().exec(buildCommand);
+        buildProcess.waitFor();
 
-            System.out.println("Launching the consumer webapp container...");
-            String runCommand = String.format(
-                    "docker run -d --name consumer-webapp " +
-                            "-e SERVER_PORT=%d " +
-                            "-e CONSUMER_THREADS=%d " +
-                            "-e QUEUE_SIZE=%d " +
-                            "-p %d:%d " +
-                            "-v ./consumer-webapp/storage:/storage " +
-                            "consumer-webapp",
-                    consumerPort, consumerThreads, queueSize, consumerPort, consumerPort
-            );
-            Process runProcess = Runtime.getRuntime().exec(runCommand);
-            runProcess.waitFor();
-            System.out.println("Consumer webapp container launched!");
-        } catch (Exception e) {
-            e.printStackTrace();
-        }
+        System.out.println("Launching the consumer container...");
+        String runCommand = String.format(
+                "docker run -d --name consumer-server " +
+                        "-e SERVER_PORT=%d " +
+                        "-e CONSUMER_THREADS=%d " +
+                        "-e QUEUE_SIZE=%d " +
+                        "-p %d:%d " +
+                        "-v %s:/storage " +
+                        "consumer-server",
+                consumerPort, consumerThreads, queueSize,
+                consumerPort, consumerPort,
+                "./consumer-server/storage"  // Host directory for video files
+        );
+
+        Process runProcess = Runtime.getRuntime().exec(runCommand);
+        runProcess.waitFor();
+        System.out.println("Consumer container launched!");
+    } catch (Exception e) {
+        e.printStackTrace();
     }
+}
 }
