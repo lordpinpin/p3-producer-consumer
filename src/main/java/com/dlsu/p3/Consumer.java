@@ -1,91 +1,146 @@
 package com.dlsu.p3;
 
-import java.io.DataInputStream;
-import java.io.File;
-import java.io.FileOutputStream;
-import java.io.IOException;
+import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import java.util.concurrent.ArrayBlockingQueue;
-import java.util.concurrent.BlockingQueue;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.security.DigestInputStream;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import java.util.Set;
+import java.util.concurrent.*;
 
 public class Consumer {
-    private static final int PORT = Integer.parseInt(System.getenv().getOrDefault("SERVER_PORT", "8081"));
-    private static final int QUEUE_SIZE = Integer.parseInt(System.getenv().getOrDefault("QUEUE_SIZE", "10"));
-    private static final int THREADS = Integer.parseInt(System.getenv().getOrDefault("CONSUMER_THREADS", "2"));
-    private static final int WEB_PORT = Integer.parseInt(System.getenv().getOrDefault("WEB_PORT", "8082"));
-    private static final Path STORAGE_DIR = Paths.get("storage");
+
+    private static final Set<String> knownHashes = ConcurrentHashMap.newKeySet();
+    private static BlockingQueue<Socket> uploadQueue;
 
     public static void main(String[] args) throws IOException {
-        Files.createDirectories(STORAGE_DIR);
+        // Read from ENV or args
+        int consumerThreads = Integer.parseInt(System.getenv().getOrDefault("CONSUMER_THREADS", args.length > 0 ? args[0] : "2"));
+        int queueSize = Integer.parseInt(System.getenv().getOrDefault("QUEUE_SIZE", args.length > 1 ? args[1] : "10"));
+        int port = Integer.parseInt(System.getenv().getOrDefault("SERVER_PORT", args.length > 2 ? args[2] : "8081"));
 
-        BlockingQueue<File> queue = new ArrayBlockingQueue<>(QUEUE_SIZE);
-        ExecutorService consumers = Executors.newFixedThreadPool(THREADS);
+        uploadQueue = new ArrayBlockingQueue<>(queueSize);
+        Path uploads = Paths.get("storage");
+        initializeKnownHashes(uploads);
+        ServerSocket serverSocket = new ServerSocket(port);
+        System.out.println("Consumer listening on port " + port);
 
-        for (int i = 0; i < THREADS; i++) {
-            int id = i;
-            consumers.submit(() -> {
+        // Start worker threads
+        for (int i = 0; i < consumerThreads; i++) {
+            new Thread(() -> {
                 while (true) {
                     try {
-                        File file = queue.take();
-                        System.out.println("Processed: " + file.getName() + " [Thread " + id + "]");
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt();
+                        Socket socket = uploadQueue.take();
+                        processUpload(socket);
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
                 }
-            });
+            }, "Consumer-Worker-" + i).start();
         }
 
-        // Socket server to receive files from producer
-        new Thread(() -> {
-            try (ServerSocket serverSocket = new ServerSocket(PORT)) {
-                System.out.println("Consumer listening on port " + PORT + " (host IP)");
-                while (true) {
-                    Socket socket = serverSocket.accept();
-                    handleUpload(socket, queue);
-                }
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }).start();
-
-        // Web GUI server (optional)
-        new Thread(() -> {
-            try {
-                System.out.println("Starting web server on port " + WEB_PORT + "...");
-                ConsumerGUI.startWebServer(STORAGE_DIR, WEB_PORT);
-            } catch (Exception e) {
-                e.printStackTrace();
-            }
-        }).start();
+        // Main accept loop
+        while (true) {
+            Socket clientSocket = serverSocket.accept();
+            handleUpload(clientSocket);
+        }
     }
 
-    private static void handleUpload(Socket socket, BlockingQueue<File> queue) {
-        new Thread(() -> {
-            try (DataInputStream dis = new DataInputStream(socket.getInputStream())) {
-                String filename = dis.readUTF();
-                long length = dis.readLong();
+    private static void handleUpload(Socket clientSocket) {
+        if (!uploadQueue.offer(clientSocket)) {
+            System.out.println("Queue full. Dropping: " + clientSocket.getRemoteSocketAddress());
+            try {
+                clientSocket.close();
+            } catch (IOException ignored) {}
+        } else {
+            System.out.println("Queued: " + clientSocket.getRemoteSocketAddress());
+        }
+    }
 
-                File outFile = STORAGE_DIR.resolve(filename).toFile();
-                try (FileOutputStream fos = new FileOutputStream(outFile)) {
-                    byte[] buffer = new byte[4096];
-                    int read;
-                    while (length > 0 && (read = dis.read(buffer, 0, (int) Math.min(buffer.length, length))) != -1) {
-                        fos.write(buffer, 0, read);
-                        length -= read;
-                    }
+    private static void processUpload(Socket socket) {
+        try (DataInputStream dis = new DataInputStream(socket.getInputStream())) {
+            String filename = dis.readUTF();
+            long fileSize = dis.readLong();
+
+            Path uploads = Paths.get("storage");
+            Files.createDirectories(uploads);
+            Path filePath = uploads.resolve(filename);
+
+            // Save the uploaded file temporarily
+            Path tempPath = uploads.resolve(filename + ".tmp");
+            try (OutputStream os = new FileOutputStream(tempPath.toFile())) {
+                byte[] buffer = new byte[4096];
+                long remaining = fileSize;
+                int read;
+                while (remaining > 0 &&
+                        (read = dis.read(buffer, 0, (int) Math.min(buffer.length, remaining))) != -1) {
+                    os.write(buffer, 0, read);
+                    remaining -= read;
+                }
+            }
+
+            String fileHash = computeSHA256(tempPath.toFile());
+
+            if (knownHashes.contains(fileHash)) {
+                System.out.println("Duplicate video detected: " + filename);
+                Files.deleteIfExists(tempPath);
+            } else {
+                knownHashes.add(fileHash);
+                Path finalPath = uploads.resolve(filename);
+
+                // Avoid overwriting another distinct file with the same name
+                if (Files.exists(finalPath)) {
+                    String newName = System.currentTimeMillis() + "_" + filename;
+                    finalPath = uploads.resolve(newName);
+                    System.out.println("Renaming to avoid conflict: " + newName);
                 }
 
-                System.out.println("Saved file: " + filename);
-                queue.put(outFile);
-            } catch (Exception e) {
-                e.printStackTrace();
+                Files.move(tempPath, finalPath);
+                System.out.println(Thread.currentThread().getName() + " received: " + finalPath.getFileName());
             }
-        }).start();
+
+        } catch (IOException | NoSuchAlgorithmException e) {
+            System.err.println("Upload error: " + e.getMessage());
+        }
+    }
+
+    private static String computeSHA256(File file) throws IOException, NoSuchAlgorithmException {
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        try (InputStream is = new FileInputStream(file);
+             DigestInputStream dis = new DigestInputStream(is, digest)) {
+            byte[] buffer = new byte[4096];
+            while (dis.read(buffer) != -1) {
+                // Reading the file to update the digest
+            }
+        }
+        byte[] hashBytes = digest.digest();
+        StringBuilder sb = new StringBuilder();
+        for (byte b : hashBytes) {
+            sb.append(String.format("%02x", b));
+        }
+        return sb.toString();
+    }
+
+    private static void initializeKnownHashes(Path storageDir) {
+        try {
+            Files.createDirectories(storageDir); // ensure dir exists
+            Files.walk(storageDir)
+                    .filter(Files::isRegularFile)
+                    .forEach(path -> {
+                        try {
+                            String hash = computeSHA256(path.toFile());
+                            knownHashes.add(hash);
+                        } catch (IOException | NoSuchAlgorithmException e) {
+                            System.err.println("Failed to hash " + path + ": " + e.getMessage());
+                        }
+                    });
+            System.out.println("Initialized hash list with " + knownHashes.size() + " existing files.");
+        } catch (IOException e) {
+            System.err.println("Failed to scan storage directory: " + e.getMessage());
+        }
     }
 }

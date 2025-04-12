@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Video Dashboard</title>
+    <style>
+        body {
+            font-family: sans-serif;
+        }
+        .video-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+            gap: 20px;
+        }
+        video {
+            width: 100%;
+            height: auto;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<h1>Uploaded Videos</h1>
+<div class="video-grid" id="video-grid"></div>
+
+<script>
+    async function loadVideos() {
+        const res = await fetch('/api/videos');
+        const videos = await res.json();
+        const grid = document.getElementById('video-grid');
+
+        videos.forEach(name => {
+            const container = document.createElement('div');
+
+            const preview = document.createElement('video');
+            preview.src = `/storage/${name}`;
+            preview.muted = true;
+            preview.preload = 'metadata';
+
+            // Show preview on hover
+            preview.addEventListener('mouseenter', () => {
+                preview.currentTime = 0;
+                preview.play();
+
+                // Stop after 10 seconds
+                const stopAfter10s = () => {
+                    if (preview.currentTime >= 10) {
+                        preview.pause();
+                        preview.removeEventListener('timeupdate', stopAfter10s);
+                    }
+                };
+                preview.addEventListener('timeupdate', stopAfter10s);
+            });
+
+            preview.addEventListener('mouseleave', () => {
+                preview.pause();
+                preview.currentTime = 0;
+            });
+
+            // Play full video on click
+            preview.addEventListener('click', () => {
+                const fullPlayer = document.createElement('video');
+                fullPlayer.src = `/storage/${name}`;
+                fullPlayer.controls = true;
+                fullPlayer.autoplay = true;
+                fullPlayer.style.width = '100%';
+
+                const overlay = document.createElement('div');
+                overlay.style.position = 'fixed';
+                overlay.style.top = '0';
+                overlay.style.left = '0';
+                overlay.style.width = '100vw';
+                overlay.style.height = '100vh';
+                overlay.style.background = 'rgba(0, 0, 0, 0.8)';
+                overlay.style.display = 'flex';
+                overlay.style.justifyContent = 'center';
+                overlay.style.alignItems = 'center';
+                overlay.appendChild(fullPlayer);
+
+                overlay.addEventListener('click', () => {
+                    overlay.remove();
+                });
+
+                document.body.appendChild(overlay);
+            });
+
+            container.appendChild(preview);
+            grid.appendChild(container);
+        });
+    }
+
+    loadVideos();
+</script>
+</body>
+</html>
