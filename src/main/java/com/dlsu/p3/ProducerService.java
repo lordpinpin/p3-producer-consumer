@@ -17,15 +17,12 @@ public class ProducerService {
         Path videoDir = Paths.get("/videos");
 
         try {
-            // List all .mp4 files in the /videos directory
             List<Path> videoFiles = Files.list(videoDir)
                     .filter(path -> path.toString().endsWith(".mp4"))
                     .toList();
 
-            // Add video files to a thread-safe queue
             BlockingQueue<Path> fileQueue = new LinkedBlockingQueue<>(videoFiles);
 
-            // Create and start producer threads
             for (int i = 0; i < producerThreads; i++) {
                 int threadId = i + 1;
                 Thread producerThread = new Thread(() -> {
@@ -42,22 +39,17 @@ public class ProducerService {
         }
     }
 
-
-
     private static void sendFileToConsumer(Path videoFile, int threadId, String consumerHost, int consumerPort) {
         try (Socket socket = new Socket(consumerHost, consumerPort)) {
-            // Prepare file data
             String filename = videoFile.getFileName().toString();
             long fileLength = Files.size(videoFile);
 
-            // Send filename and file size
             try (DataOutputStream dos = new DataOutputStream(socket.getOutputStream());
                  FileInputStream fileInputStream = new FileInputStream(videoFile.toFile())) {
 
-                dos.writeUTF(filename);  // Send file name
-                dos.writeLong(fileLength);  // Send file size
+                dos.writeUTF(filename);
+                dos.writeLong(fileLength);
 
-                // Send the actual file bytes
                 byte[] buffer = new byte[4096];
                 int bytesRead;
                 while ((bytesRead = fileInputStream.read(buffer)) != -1) {
@@ -67,6 +59,7 @@ public class ProducerService {
                 System.out.println("Sent file: " + filename + " from Producer " + threadId);
             }
         } catch (IOException e) {
+            System.err.println("Failed to connect to consumer at " + consumerHost + ":" + consumerPort);
             e.printStackTrace();
         }
     }

@@ -1,6 +1,5 @@
 package com.dlsu.p3;
 
-
 public class Producer {
 
     public static void main(String[] args) {

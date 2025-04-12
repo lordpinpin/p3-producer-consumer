@@ -1,13 +1,12 @@
 package com.dlsu.p3;
 
+import java.io.File;
 import java.io.IOException;
 import java.util.Scanner;
 
-
 public class Main {
 
-    public static void main(String[] args) {
-        // Get user inputs for configuration
+    public static void main(String[] args) throws InterruptedException {
         Scanner scanner = new Scanner(System.in);
 
         System.out.print("Enter number of producer threads: ");
@@ -19,42 +18,76 @@ public class Main {
         System.out.print("Enter max queue size: ");
         int queueSize = getPositiveInt(scanner);
 
-        // IP addresses of the VMs (or Docker containers)
-        String consumerIp = "192.168.1.2"; // Update with the actual IP of the consumer VM/container
         int consumerPort = 8081;
 
-        // Launch the Producer and Consumer Docker containers based on the inputs
-        launchProducerContainer(producerThreads, queueSize, consumerIp, consumerPort);
-        launchConsumerContainer(consumerThreads, queueSize, consumerPort);
+        // Start consumer Java program as a subprocess
+        startConsumerProgram(consumerThreads, queueSize, consumerPort);
+
+        // Allow time for consumer to start listening
+        Thread.sleep(5000);
+
+        // Get host IP (or use default 127.0.0.1 if local)
+        String consumerHost = "host.docker.internal"; // works for Docker on Mac/Windows
+
+        // Launch producer inside Docker
+        launchProducerContainer(producerThreads, queueSize, consumerHost, consumerPort);
 
         scanner.close();
     }
 
-    // Method to launch Producer container with configuration
-    private static void launchProducerContainer(int producerThreads, int queueSize, String consumerIp, int consumerPort) {
+
+    private static void startConsumerProgram(int threads, int queueSize, int port) {
         try {
-            // Build the Docker image for the producer
+            System.out.println("Starting consumer...");
+
+            String classpath = "./consumer-server/target/classes"; // compiled classes path
+            String mainClass = "Consumer"; // exact class name in the default package
+
+            ProcessBuilder pb = new ProcessBuilder(
+                    "java",
+                    "-cp", classpath,
+                    mainClass
+            );
+
+            // Set env vars the Consumer class relies on
+            pb.environment().put("SERVER_PORT", String.valueOf(port));
+            pb.environment().put("CONSUMER_THREADS", String.valueOf(threads));
+            pb.environment().put("QUEUE_SIZE", String.valueOf(queueSize));
+            pb.environment().put("WEB_PORT", "8082");
+
+            pb.inheritIO(); // show output in console
+            pb.start();
+
+            System.out.println("Consumer started.");
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+    }
+
+    private static void launchProducerContainer(int producerThreads, int queueSize, String consumerHost, int consumerPort) {
+        try {
             System.out.println("Building the producer Docker image...");
             String buildCommand = "docker build -t producer-service ./producer-service";
             Process buildProcess = Runtime.getRuntime().exec(buildCommand);
-            buildProcess.waitFor();  // Wait for the build to complete
+            buildProcess.waitFor();
 
-            // Mount the videos directory from the host machine to the container
-            String runCommand = String.format("docker run -d --name producer-service " +
+            String currentDir = new File(".").getCanonicalPath();
+            String videosPath = currentDir + "/videos";
+
+            String runCommand = String.format(
+                    "docker run -d --name producer-service " +
                             "-e CONSUMER_HOST=%s " +
                             "-e CONSUMER_PORT=%d " +
                             "-e PRODUCER_THREADS=%d " +
                             "-e QUEUE_SIZE=%d " +
-                            "-v %s:/videos " + // Mount the directory to the container
+                            "-v %s:/videos " +
                             "producer-service",
-                    consumerIp, consumerPort, producerThreads, queueSize,
-                    "/videos"  // Full path on the host machine to video folders
+                    consumerHost, consumerPort, producerThreads, queueSize, videosPath
             );
 
-            // Run the producer container
             System.out.println("Launching the producer container...");
             Process runProcess = Runtime.getRuntime().exec(runCommand);
-            runProcess.waitFor();  // Wait for the producer container to start
+            runProcess.waitFor();
             System.out.println("Producer container launched successfully!");
         } catch (IOException | InterruptedException e) {
             e.printStackTrace();
@@ -72,33 +105,4 @@ public class Main {
             }
         }
     }
-
-   private static void launchConsumerContainer(int consumerThreads, int queueSize, int consumerPort) {
-    try {
-        System.out.println("Building the consumer Docker image...");
-        String buildCommand = "docker build -t consumer-server ./consumer-server";
-        Process buildProcess = Runtime.getRuntime().exec(buildCommand);
-        buildProcess.waitFor();
-
-        System.out.println("Launching the consumer container...");
-        String runCommand = String.format(
-                "docker run -d --name consumer-server " +
-                        "-e SERVER_PORT=%d " +
-                        "-e CONSUMER_THREADS=%d " +
-                        "-e QUEUE_SIZE=%d " +
-                        "-p %d:%d " +
-                        "-v %s:/storage " +
-                        "consumer-server",
-                consumerPort, consumerThreads, queueSize,
-                consumerPort, consumerPort,
-                "./consumer-server/storage"  // Host directory for video files
-        );
-
-        Process runProcess = Runtime.getRuntime().exec(runCommand);
-        runProcess.waitFor();
-        System.out.println("Consumer container launched!");
-    } catch (Exception e) {
-        e.printStackTrace();
-    }
-}
 }
