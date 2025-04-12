@@ -6,6 +6,7 @@ import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
+import java.nio.file.StandardCopyOption;
 import java.security.DigestInputStream;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -68,10 +69,11 @@ public class Consumer {
 
             Path uploads = Paths.get("storage");
             Files.createDirectories(uploads);
-            Path filePath = uploads.resolve(filename);
 
-            // Save the uploaded file temporarily
-            try (OutputStream os = new FileOutputStream(filePath.toFile())) {
+            // Save to a unique temp file
+            Path tempFile = Files.createTempFile("upload_", ".tmp");
+
+            try (OutputStream os = new FileOutputStream(tempFile.toFile())) {
                 byte[] buffer = new byte[4096];
                 long remaining = fileSize;
                 int read;
@@ -82,15 +84,31 @@ public class Consumer {
                 }
             }
 
-            // Compute hash and check for duplicates
-            String fileHash = computeSHA256(filePath.toFile());
+            // Compute hash from the temp file
+            String fileHash = computeSHA256(tempFile.toFile());
 
             if (knownHashes.contains(fileHash)) {
                 System.out.println("Duplicate video detected: " + filename);
-                Files.deleteIfExists(filePath);
+                Files.deleteIfExists(tempFile);
             } else {
                 knownHashes.add(fileHash);
-                System.out.println(Thread.currentThread().getName() + " received: " + filename);
+
+                Path finalPath = uploads.resolve(filename);
+
+                // Avoid overwriting a different file with the same name
+                if (Files.exists(finalPath)) {
+                    // Rename the new file to avoid conflict (e.g., add timestamp)
+                    String baseName = filename.contains(".") ?
+                            filename.substring(0, filename.lastIndexOf('.')) : filename;
+                    String extension = filename.contains(".") ?
+                            filename.substring(filename.lastIndexOf('.')) : "";
+                    String uniqueFilename = baseName + "_" + System.currentTimeMillis() + extension;
+                    finalPath = uploads.resolve(uniqueFilename);
+                    System.out.println("Filename conflict. Saved as: " + uniqueFilename);
+                }
+
+                Files.move(tempFile, finalPath);
+                System.out.println(Thread.currentThread().getName() + " received: " + finalPath.getFileName());
             }
 
         } catch (IOException | NoSuchAlgorithmException e) {
