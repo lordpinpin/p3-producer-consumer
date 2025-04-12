@@ -55,3 +55,7 @@ You may also run this in IntelliJ by building the project with Maven then runnin
 To demonstrate the system in action, insert a video here that shows the consumer and producer running locally and exchanging data.
 
 [Demo Video](https://drive.google.com/file/d/1tMi9zZUYZpvt-4nBOfAMlMvxNVtItTmL/view?usp=sharing)
+
+*Slides*
+
+Check the file within main: [STDISCM - P3 Info Slides.pdf](https://github.com/lordpinpin/p3-producer-consumer/blob/main/STDISCM%20-%20P3%20Info%20Slides.pdf)
