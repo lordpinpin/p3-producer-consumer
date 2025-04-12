@@ -1,10 +1,10 @@
-*Media Upload Simulation
+*Media Upload Simulation*
 
 This project simulates a producer-consumer system where video files are uploaded from a producer to a consumer via network communication. The consumer was initially run in a Docker container but now runs locally on your machine. The producer will continue running inside a Docker container.
 
-*Setup and Installation
+*Setup and Installation*
 
-**Prerequisites
+**Prerequisites**
 
 Before you begin, ensure you have the following installed on your machine:
 
@@ -50,7 +50,7 @@ This will run both the Consumer and Producers together at once.
 
 You may also run this in IntelliJ by building the project with Maven then running the Main class.
 
-*Troubleshooting
+*Troubleshooting*
 
 1. Docker Container Issues  
    If you need to delete the previous producer Docker container or image before running it again, use the following commands:
@@ -61,7 +61,7 @@ You may also run this in IntelliJ by building the project with Maven then runnin
 2. Local Consumer Not Starting  
    Make sure your local consumer server is running and listening on port 8081. You can check by navigating to http://localhost:8081 in your web browser.
 
-*Demo
+*Demo*
 
 To demonstrate the system in action, insert a video here that shows the consumer and producer running locally and exchanging data.
 
