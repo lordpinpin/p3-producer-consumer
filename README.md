@@ -19,11 +19,9 @@ First, download the project files and unzip them to your preferred directory.
 2. Install Maven Dependencies
 
 Navigate to the root folder of the project where the pom.xml file is located.
-
 cd /path/to/root-folder
 
 Run the following Maven command to install all necessary dependencies:
-
 mvn clean install
 
 This will download all the required libraries and prepare the project for execution.
@@ -34,16 +32,7 @@ In the files, add a /videos and /storage folder in the root folder. This will be
 
 4. Run Code 
 
-The consumer service is a Spring Boot application that now runs locally instead of in a Docker container.
-
-a. Navigate to the Consumer Project
-
-cd consumer-server
-
-b. Run the Consumer Service
-
 To start the consumer service, use the following command:
-
 mvn exec:java
 
 This will run both the Consumer and Producers together at once.
