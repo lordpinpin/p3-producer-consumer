@@ -71,8 +71,7 @@ public class Consumer {
             Path filePath = uploads.resolve(filename);
 
             // Save the uploaded file temporarily
-            Path tempPath = uploads.resolve(filename + ".tmp");
-            try (OutputStream os = new FileOutputStream(tempPath.toFile())) {
+            try (OutputStream os = new FileOutputStream(filePath.toFile())) {
                 byte[] buffer = new byte[4096];
                 long remaining = fileSize;
                 int read;
@@ -83,24 +82,15 @@ public class Consumer {
                 }
             }
 
-            String fileHash = computeSHA256(tempPath.toFile());
+            // Compute hash and check for duplicates
+            String fileHash = computeSHA256(filePath.toFile());
 
             if (knownHashes.contains(fileHash)) {
                 System.out.println("Duplicate video detected: " + filename);
-                Files.deleteIfExists(tempPath);
+                Files.deleteIfExists(filePath);
             } else {
                 knownHashes.add(fileHash);
-                Path finalPath = uploads.resolve(filename);
-
-                // Avoid overwriting another distinct file with the same name
-                if (Files.exists(finalPath)) {
-                    String newName = System.currentTimeMillis() + "_" + filename;
-                    finalPath = uploads.resolve(newName);
-                    System.out.println("Renaming to avoid conflict: " + newName);
-                }
-
-                Files.move(tempPath, finalPath);
-                System.out.println(Thread.currentThread().getName() + " received: " + finalPath.getFileName());
+                System.out.println(Thread.currentThread().getName() + " received: " + filename);
             }
 
         } catch (IOException | NoSuchAlgorithmException e) {
