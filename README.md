@@ -54,4 +54,4 @@ You may also run this in IntelliJ by building the project with Maven then runnin
 
 To demonstrate the system in action, insert a video here that shows the consumer and producer running locally and exchanging data.
 
-![Demo Video](https://drive.google.com/file/d/1tMi9zZUYZpvt-4nBOfAMlMvxNVtItTmL/view?usp=sharing)
+[Demo Video](https://drive.google.com/file/d/1tMi9zZUYZpvt-4nBOfAMlMvxNVtItTmL/view?usp=sharing)
